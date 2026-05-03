@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Stage, Layer, Image as KonvaImage, Circle, Line, Text, Group } from 'react-konva';
-import { Upload, Download, Compass, Layers } from 'lucide-react';
+import { Upload, Download, Compass, Layers, Menu, X, Type } from 'lucide-react';
 import { VASTU_DEITIES, ELEMENT_COLORS } from './vastuData';
 
 interface Point {
@@ -11,6 +11,7 @@ interface Point {
 const App: React.FC = () => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  const [zoom, setZoom] = useState(1);
   const [anchors, setAnchors] = useState<Point[]>([
     { x: 100, y: 100 }, // NW (A)
     { x: 700, y: 100 }, // NE (B)
@@ -21,6 +22,9 @@ const App: React.FC = () => {
   const [showElements, setShowElements] = useState<boolean>(true);
   const [showDeities, setShowDeities] = useState<boolean>(true);
   const [showZones, setShowZones] = useState<boolean>(false);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const [fontSize, setFontSize] = useState<number>(12);
+  const [textOpacity, setTextOpacity] = useState<number>(1);
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -32,25 +36,16 @@ const App: React.FC = () => {
       img.src = url;
       img.onload = () => {
         setImage(img);
-        if (containerRef.current) {
-          const containerWidth = containerRef.current.clientWidth;
-          const containerHeight = containerRef.current.clientHeight;
-          
-          // Scale image to fit container
-          const scale = Math.min(containerWidth / img.width, containerHeight / img.height);
-          const newWidth = img.width * scale;
-          const newHeight = img.height * scale;
-          
-          setStageSize({ width: newWidth, height: newHeight });
-          
-          // Reset anchors to corners of the new image
-          setAnchors([
-            { x: 10, y: 10 },
-            { x: newWidth - 10, y: 10 },
-            { x: newWidth - 10, y: newHeight - 10 },
-            { x: 10, y: newHeight - 10 },
-          ]);
-        }
+        setStageSize({ width: img.width, height: img.height });
+        
+        const padX = img.width * 0.05;
+        const padY = img.height * 0.05;
+        setAnchors([
+          { x: padX, y: padY },
+          { x: img.width - padX, y: padY },
+          { x: img.width - padX, y: img.height - padY },
+          { x: padX, y: img.height - padY },
+        ]);
       };
     }
   };
@@ -203,29 +198,57 @@ const App: React.FC = () => {
 
   // Effect to handle window resize for full canvas space
   useEffect(() => {
-    if (!image && containerRef.current) {
-      setStageSize({
-        width: containerRef.current.clientWidth,
-        height: containerRef.current.clientHeight
-      });
-      setAnchors([
-        { x: 50, y: 50 },
-        { x: containerRef.current.clientWidth - 50, y: 50 },
-        { x: containerRef.current.clientWidth - 50, y: containerRef.current.clientHeight - 50 },
-        { x: 50, y: containerRef.current.clientHeight - 50 },
-      ]);
-    }
-  }, []);
+    const updateZoom = () => {
+      if (containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current;
+        // Padding inside the container for the stage
+        const availableWidth = clientWidth - 32; 
+        const availableHeight = clientHeight - 32;
+        
+        const scale = Math.min(
+          availableWidth / stageSize.width,
+          availableHeight / stageSize.height
+        );
+        setZoom(scale);
+      }
+    };
+    
+    updateZoom();
+    window.addEventListener('resize', updateZoom);
+    return () => window.removeEventListener('resize', updateZoom);
+  }, [stageSize]);
 
   return (
     <div className="flex h-screen w-full bg-slate-900 text-slate-100 font-sans overflow-hidden">
+
+      {/* Mobile Overlay */}
+      {isMenuOpen && (
+        <div 
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" 
+          onClick={() => setIsMenuOpen(false)} 
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col shadow-2xl z-10">
-        <div className="p-6 border-b border-slate-700">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-            Vastu Mapper
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">Paramasayika 81-Pada Grid</p>
+      <div className={`
+        fixed md:static inset-y-0 left-0 z-50
+        transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
+        transition-transform duration-300 ease-in-out
+        w-80 bg-slate-800 border-r border-slate-700 flex flex-col shadow-2xl shrink-0 h-full
+      `}>
+        <div className="p-6 border-b border-slate-700 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+              Vastu Mapper
+            </h1>
+            <p className="text-xs text-slate-400 mt-1">Paramasayika 81-Pada Grid</p>
+          </div>
+          <button 
+            className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            <X size={24} />
+          </button>
         </div>
 
         <div className="flex-1 p-6 space-y-8 overflow-y-auto">
@@ -302,6 +325,45 @@ const App: React.FC = () => {
             </div>
           </div>
 
+          {/* Text Formatting */}
+          {showDeities && (
+            <div className="space-y-3 pt-4 border-t border-slate-700">
+              <label className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Type size={16} /> Label Formatting
+              </label>
+              
+              <div className="space-y-4 bg-slate-900 p-4 rounded-lg border border-slate-700">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs font-medium text-slate-400">
+                    <span>Font Size</span>
+                    <span className="text-blue-400 font-mono bg-slate-800 px-1.5 py-0.5 rounded">{fontSize}px</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="6" max="20" 
+                    value={fontSize} 
+                    onChange={(e) => setFontSize(Number(e.target.value))}
+                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs font-medium text-slate-400">
+                    <span>Opacity</span>
+                    <span className="text-blue-400 font-mono bg-slate-800 px-1.5 py-0.5 rounded">{Math.round(textOpacity * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" max="1" step="0.05"
+                    value={textOpacity} 
+                    onChange={(e) => setTextOpacity(Number(e.target.value))}
+                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Legend */}
           {showElements && (
             <div className="space-y-3 pt-4 border-t border-slate-700">
@@ -317,27 +379,34 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
-
-        <div className="p-6 border-t border-slate-700">
-          <button 
-            onClick={handleExport}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-900/20"
-          >
-            <Download size={18} /> Export Image
-          </button>
-        </div>
       </div>
 
-      {/* Main Canvas Area */}
-      <div className="flex-1 bg-slate-950 flex items-center justify-center p-8 relative" ref={containerRef}>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 relative overflow-hidden">
+        
+        {/* Header (Mobile Only) */}
+        <header className="flex md:hidden items-center p-4 bg-slate-800 border-b border-slate-700 shrink-0 gap-4">
+          <button 
+            onClick={() => setIsMenuOpen(true)} 
+            className="p-2 bg-slate-700 rounded-lg shadow text-slate-100 focus:outline-none hover:bg-slate-600 transition"
+          >
+            <Menu size={24} />
+          </button>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+            Vastu Mapper
+          </h1>
+        </header>
+
+        {/* Canvas Area */}
+        <div className="flex-1 w-full min-w-0 flex items-center justify-center p-4 relative overflow-hidden" ref={containerRef}>
         {!image && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-slate-600 text-lg font-medium">Upload a floor plan to begin mapping</p>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+            <p className="text-slate-500 text-lg font-medium bg-slate-900/80 px-4 py-2 rounded-lg">Upload a floor plan to begin mapping</p>
           </div>
         )}
         
-        <div className="relative shadow-2xl ring-1 ring-slate-800 rounded-lg overflow-hidden bg-white" style={{ width: stageSize.width, height: stageSize.height }}>
-          <Stage width={stageSize.width} height={stageSize.height} ref={stageRef}>
+        <div className="relative shadow-2xl ring-1 ring-slate-800 rounded-lg overflow-hidden bg-white" style={{ width: stageSize.width * zoom, height: stageSize.height * zoom }}>
+          <Stage width={stageSize.width * zoom} height={stageSize.height * zoom} scale={{ x: zoom, y: zoom }} ref={stageRef}>
             <Layer>
               {image && (
                 <KonvaImage image={image} width={stageSize.width} height={stageSize.height} />
@@ -410,17 +479,17 @@ const App: React.FC = () => {
 
               {/* Deity Labels */}
               {showDeities && deityLabels.map((label, i) => (
-                <Group key={`label-${i}`} x={label.x} y={label.y}>
+                <Group key={`label-${i}`} x={label.x} y={label.y} opacity={textOpacity}>
                   <Text
                     text={label.name}
-                    fontSize={12}
+                    fontSize={fontSize}
                     fontFamily="Inter, sans-serif"
                     fontStyle="bold"
                     fill="#1e293b"
                     align="center"
                     verticalAlign="middle"
                     offsetX={50}
-                    offsetY={6}
+                    offsetY={fontSize / 2}
                     width={100}
                     shadowColor="white"
                     shadowBlur={4}
@@ -435,10 +504,10 @@ const App: React.FC = () => {
                   key={`anchor-${i}`}
                   x={anchor.x}
                   y={anchor.y}
-                  radius={8}
+                  radius={12}
                   fill="#3b82f6"
                   stroke="#ffffff"
-                  strokeWidth={2}
+                  strokeWidth={3}
                   draggable
                   onDragMove={(e) => handleDragMove(i, e)}
                   onMouseEnter={(e) => {
@@ -450,7 +519,7 @@ const App: React.FC = () => {
                     if (container) container.style.cursor = 'default';
                   }}
                   shadowColor="rgba(0,0,0,0.5)"
-                  shadowBlur={4}
+                  shadowBlur={6}
                   shadowOffset={{ x: 0, y: 2 }}
                 />
               ))}
@@ -458,7 +527,18 @@ const App: React.FC = () => {
           </Stage>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="p-4 bg-slate-800 border-t border-slate-700 shrink-0 flex justify-center md:justify-end z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <button 
+          onClick={handleExport}
+          className="w-full md:w-auto py-3 px-8 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-900/20"
+        >
+          <Download size={18} /> Export Map
+        </button>
+      </footer>
     </div>
+  </div>
   );
 };
 
