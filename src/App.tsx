@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Stage, Layer, Image as KonvaImage, Circle, Line, Text, Group } from 'react-konva';
 import { Upload, Download, Compass, Layers, Menu, X, Type } from 'lucide-react';
-import { VASTU_DEITIES, ELEMENT_COLORS } from './vastuData';
+import { VASTU_DEITIES, ELEMENT_COLORS, AUSPICIOUS_ENTRIES } from './vastuData';
+import vastuPurushImgSrc from './assets/vastu_purush.png';
 
 interface Point {
   x: number;
@@ -22,7 +23,19 @@ const App: React.FC = () => {
   const [showElements, setShowElements] = useState<boolean>(true);
   const [showDeities, setShowDeities] = useState<boolean>(true);
   const [showZones, setShowZones] = useState<boolean>(false);
+  const [showAuspicious, setShowAuspicious] = useState<boolean>(false);
+  const [showMarmasthals, setShowMarmasthals] = useState<boolean>(false);
+  const [showVastuPurush, setShowVastuPurush] = useState<boolean>(false);
+  const [vastuPurushImage, setVastuPurushImage] = useState<HTMLImageElement | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const img = new window.Image();
+    img.src = vastuPurushImgSrc;
+    img.onload = () => {
+      setVastuPurushImage(img);
+    };
+  }, []);
   const [fontSize, setFontSize] = useState<number>(12);
   const [textOpacity, setTextOpacity] = useState<number>(1);
   const stageRef = useRef<any>(null);
@@ -138,8 +151,12 @@ const App: React.FC = () => {
     const angle = -northDegree * Math.PI / 180;
     const rx = dx * Math.cos(angle) - dy * Math.sin(angle);
     const ry = dx * Math.sin(angle) + dy * Math.cos(angle);
-    let lc = Math.round(rx) + 4;
-    let lr = Math.round(ry) + 4;
+    
+    // Scale to ensure the physical grid corners project fully to the logical grid boundaries
+    const scale = 1 / Math.max(Math.abs(Math.cos(angle)), Math.abs(Math.sin(angle)));
+    
+    let lc = Math.round(rx * scale) + 4;
+    let lr = Math.round(ry * scale) + 4;
     lc = Math.max(0, Math.min(8, lc));
     lr = Math.max(0, Math.min(8, lr));
     
@@ -179,7 +196,8 @@ const App: React.FC = () => {
     return cells;
   }, [anchors, northDegree]);
 
-  // Generate labels for every block
+  // Generate labels for every block — one per physical cell that has a deity.
+  // Using physical cell centers keeps every label within the grid bounds.
   const deityLabels = useMemo(() => {
     const labels: { name: string, x: number, y: number, element: string }[] = [];
     gridCells.forEach(cell => {
@@ -195,6 +213,74 @@ const App: React.FC = () => {
     return labels;
   }, [gridCells]);
 
+  // Marmasthals: 6 Vamsa diagonal lines connecting specific deity pada centers.
+  // Coordinates are [colStart, rowStart, colEnd, rowEnd] in 0–9 grid units (cell center = index + 0.5).
+  // The 9 intersections of these lines are the atimarmas (marmasthala points).
+  const marmasthals = useMemo(() => {
+    if (!showMarmasthals) return { lines: [], dots: [] };
+    const A = anchors[0], B = anchors[1], C = anchors[2], D = anchors[3];
+
+    const linesCoords = [
+      [8.5, 0.5, 0.5, 8.5], // Shikhi (NE corner) ↔ Pitra (SW corner)
+      [6.5, 0.5, 0.5, 6.5], // Aditi ↔ Sugriva
+      [8.5, 2.5, 2.5, 8.5], // Jayanta ↔ Bhrngaraja
+      [0.5, 0.5, 8.5, 8.5], // Roga (NW corner) ↔ Anil (SE corner)
+      [2.5, 0.5, 8.5, 6.5], // Shosha ↔ Vitatha
+      [0.5, 2.5, 6.5, 8.5], // Mukhya ↔ Bhrisha
+    ];
+
+    // 9 intersection points of the 6 lines above (3 lines of slope -1 × 3 lines of slope +1)
+    const dotsCoords = [
+      [4.5, 4.5], // Center – Mahamarma
+      [4.5, 2.5], // Top
+      [3.5, 3.5], // Upper-left
+      [5.5, 3.5], // Upper-right
+      [2.5, 4.5], // Left
+      [6.5, 4.5], // Right
+      [3.5, 5.5], // Lower-left
+      [5.5, 5.5], // Lower-right
+      [4.5, 6.5], // Bottom
+    ];
+
+    const lines = linesCoords.map(coords => ({
+      p1: interpolate(coords[0] / 9, coords[1] / 9, A, B, C, D),
+      p2: interpolate(coords[2] / 9, coords[3] / 9, A, B, C, D),
+    }));
+
+    const dots = dotsCoords.map(coords =>
+      interpolate(coords[0] / 9, coords[1] / 9, A, B, C, D)
+    );
+
+    return { lines, dots };
+  }, [anchors, showMarmasthals]);
+
+  // Vastu purush overlay details
+  const vpDetails = useMemo(() => {
+    if (!showVastuPurush) return null;
+    const A = anchors[0], B = anchors[1], C = anchors[2], D = anchors[3];
+    const width = Math.hypot(B.x - A.x, B.y - A.y);
+    const height = Math.hypot(D.x - A.x, D.y - A.y);
+    const baseRotation = Math.atan2(B.y - A.y, B.x - A.x) * 180 / Math.PI;
+
+    const centerX = (A.x + B.x + C.x + D.x) / 4;
+    const centerY = (A.y + B.y + C.y + D.y) / 4;
+
+    // Fixed small scale: image stays a consistent size and always clears the grid edges
+    const scaleFit = 0.45;
+
+    const vpWidth = width * scaleFit;
+    const vpHeight = height * scaleFit;
+
+    return {
+      x: centerX,
+      y: centerY,
+      width: vpWidth,
+      height: vpHeight,
+      rotation: baseRotation + northDegree,
+      offsetX: vpWidth / 2,
+      offsetY: vpHeight / 2
+    };
+  }, [anchors, northDegree, showVastuPurush]);
 
   // Effect to handle window resize for full canvas space
   useEffect(() => {
@@ -322,6 +408,33 @@ const App: React.FC = () => {
                 />
                 <span className="text-sm font-medium">16 Vastu Zones</span>
               </label>
+              <label className="flex items-center gap-3 p-3 bg-slate-900 rounded-lg cursor-pointer border border-slate-700 hover:border-slate-500 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={showAuspicious} 
+                  onChange={(e) => setShowAuspicious(e.target.checked)}
+                  className="w-4 h-4 text-blue-500 rounded focus:ring-blue-500 focus:ring-offset-slate-900 bg-slate-700 border-slate-600"
+                />
+                <span className="text-sm font-medium">Auspicious Entries</span>
+              </label>
+              <label className="flex items-center gap-3 p-3 bg-slate-900 rounded-lg cursor-pointer border border-slate-700 hover:border-slate-500 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={showMarmasthals} 
+                  onChange={(e) => setShowMarmasthals(e.target.checked)}
+                  className="w-4 h-4 text-blue-500 rounded focus:ring-blue-500 focus:ring-offset-slate-900 bg-slate-700 border-slate-600"
+                />
+                <span className="text-sm font-medium">Marmasthals</span>
+              </label>
+              <label className="flex items-center gap-3 p-3 bg-slate-900 rounded-lg cursor-pointer border border-slate-700 hover:border-slate-500 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={showVastuPurush} 
+                  onChange={(e) => setShowVastuPurush(e.target.checked)}
+                  className="w-4 h-4 text-blue-500 rounded focus:ring-blue-500 focus:ring-offset-slate-900 bg-slate-700 border-slate-600"
+                />
+                <span className="text-sm font-medium">Vastu Purush</span>
+              </label>
             </div>
           </div>
 
@@ -426,6 +539,23 @@ const App: React.FC = () => {
                 />
               ))}
 
+              {/* Auspicious Entries Highlight */}
+              {showAuspicious && gridCells.map((cell, i) => {
+                if (cell.deity && AUSPICIOUS_ENTRIES.includes(cell.deity.name)) {
+                  return (
+                    <Line
+                      key={`auspicious-${i}`}
+                      points={cell.points}
+                      fill="rgba(34, 197, 94, 0.3)"
+                      stroke="#22c55e"
+                      strokeWidth={3}
+                      closed
+                    />
+                  );
+                }
+                return null;
+              })}
+
               {/* Grid Outline */}
               <Line
                 points={[
@@ -438,6 +568,46 @@ const App: React.FC = () => {
                 strokeWidth={2}
                 closed
               />
+
+              {/* Vastu Purush Overlay */}
+              {showVastuPurush && vpDetails && vastuPurushImage && (
+                <KonvaImage
+                  image={vastuPurushImage}
+                  x={vpDetails.x}
+                  y={vpDetails.y}
+                  width={vpDetails.width}
+                  height={vpDetails.height}
+                  rotation={vpDetails.rotation}
+                  offsetX={vpDetails.offsetX}
+                  offsetY={vpDetails.offsetY}
+                  opacity={0.6}
+                  listening={false}
+                />
+              )}
+
+              {/* Marmasthals Overlay */}
+              {showMarmasthals && (
+                <Group>
+                  {marmasthals.lines.map((line, i) => (
+                    <Line
+                      key={`marma-line-${i}`}
+                      points={[line.p1.x, line.p1.y, line.p2.x, line.p2.y]}
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dash={[5, 5]}
+                    />
+                  ))}
+                  {marmasthals.dots.map((dot, i) => (
+                    <Circle
+                      key={`marma-dot-${i}`}
+                      x={dot.x}
+                      y={dot.y}
+                      radius={6}
+                      fill="#ef4444"
+                    />
+                  ))}
+                </Group>
+              )}
 
               {/* Vastu 16 Zones */}
               {showZones && (

@@ -30,7 +30,7 @@ export const VASTU_DEITIES: Deity[] = [
   // Bottom Row (South -> SW)
   { name: 'Pusha', cells: [{ r: 8, c: 7 }], element: 'Fire' },
   { name: 'Vitatha', cells: [{ r: 8, c: 6 }], element: 'Fire' },
-  { name: 'Brihatkshat', cells: [{ r: 8, c: 5 }], element: 'Fire' },
+  { name: 'Grahkshat', cells: [{ r: 8, c: 5 }], element: 'Fire' },
   { name: 'Yama', cells: [{ r: 8, c: 4 }], element: 'Fire' },
   { name: 'Gandharva', cells: [{ r: 8, c: 3 }], element: 'Fire' },
   { name: 'Bhringaraj', cells: [{ r: 8, c: 2 }], element: 'Fire' },
@@ -118,3 +118,8 @@ export const ELEMENT_COLORS = {
   Earth: 'rgba(234, 179, 8, 0.5)',   // Yellow
   Space: 'rgba(156, 163, 175, 0.5)', // Gray
 };
+
+export const AUSPICIOUS_ENTRIES = [
+  'Gandharva', 'Grahkshat', 'Sugriva', 'Pushpadanta', 'Mukhya', 'Bhallat', 'Soma', 'Jayanta', 'Indra'
+];
+
